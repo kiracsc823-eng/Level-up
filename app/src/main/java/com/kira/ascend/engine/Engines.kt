@@ -273,3 +273,138 @@ object Analytics {
         return (done * 100.0 / due).roundToInt()
     }
 }
+
+/** Daily System reward scales with the number of objectives, so one tick-box cannot farm 250 XP. */
+object DailyEngine {
+    fun reward(items: Int): Pair<Int, Int> = Pair(minOf(250, 50 * items), minOf(5, items))
+}
+
+data class QuestTemplate(
+    val name: String, val desc: String, val category: String, val difficulty: Difficulty,
+    val type: QuestType, val timerMinutes: Int, val verification: Verification
+)
+
+object Templates {
+    val all: List<QuestTemplate> = listOf(
+        QuestTemplate("Study 60 minutes", "A focused study session.", "Knowledge", Difficulty.B, QuestType.DAILY, 60, Verification.TIMER),
+        QuestTemplate("Read 20 pages", "Read a book or notes.", "Knowledge", Difficulty.D, QuestType.DAILY, 0, Verification.CONFIRM),
+        QuestTemplate("Revise yesterday's notes", "Quick revision before new topics.", "Knowledge", Difficulty.D, QuestType.HABIT, 20, Verification.TIMER),
+        QuestTemplate("Push-ups (3 sets)", "Good form. Rest between sets.", "Fitness", Difficulty.C, QuestType.DAILY, 0, Verification.CONFIRM),
+        QuestTemplate("Squats (3 sets)", "Good form. Rest between sets.", "Fitness", Difficulty.C, QuestType.DAILY, 0, Verification.CONFIRM),
+        QuestTemplate("Run or brisk walk 20 minutes", "Go at your own pace.", "Fitness", Difficulty.C, QuestType.DAILY, 0, Verification.CONFIRM),
+        QuestTemplate("Stretch for 10 minutes", "Warm up or cool down.", "Fitness", Difficulty.E, QuestType.HABIT, 10, Verification.TIMER),
+        QuestTemplate("Practice a skill 25 minutes", "Deliberate practice.", "Skills", Difficulty.C, QuestType.HABIT, 25, Verification.TIMER),
+        QuestTemplate("Complete 1 priority task", "The most important task of the day.", "Productivity", Difficulty.D, QuestType.DAILY, 0, Verification.CONFIRM),
+        QuestTemplate("Plan tomorrow's top 3 tasks", "Write them down tonight.", "Discipline", Difficulty.D, QuestType.HABIT, 0, Verification.CONFIRM),
+        QuestTemplate("Drink 2 litres of water", "Stay hydrated.", "Discipline", Difficulty.E, QuestType.HABIT, 0, Verification.CONFIRM),
+        QuestTemplate("Sleep before 11 PM", "Rest is part of progress.", "Discipline", Difficulty.D, QuestType.HABIT, 0, Verification.CONFIRM),
+        QuestTemplate("Log today's spending", "Note what you spent and earned.", "Finance", Difficulty.E, QuestType.HABIT, 0, Verification.CONFIRM),
+        QuestTemplate("Write a 5-minute reflection", "What went well? What to improve?", "Personal Growth", Difficulty.D, QuestType.HABIT, 0, Verification.CONFIRM),
+        QuestTemplate("Create something small", "Draw, write, build or compose.", "Creativity", Difficulty.D, QuestType.HABIT, 0, Verification.CONFIRM)
+    )
+
+    fun build(t: QuestTemplate, s: Settings): Quest {
+        val cat = if (t.category in s.categories) t.category else (s.categories.firstOrNull() ?: "Productivity")
+        val repeat = if (t.type == QuestType.DAILY || t.type == QuestType.HABIT) Repeat.DAILY else Repeat.NONE
+        return Quest(
+            newId(), t.name, t.desc, cat, t.difficulty, t.type, t.difficulty.defaultXp,
+            QuestEngine.rewardsFor(cat, t.difficulty, s.enabledStats), null, repeat,
+            t.timerMinutes, t.verification, "", nowMs()
+        )
+    }
+
+    private val keywords: List<Pair<String, List<String>>> = listOf(
+        "Fitness" to listOf("squat", "push", "pull up", "pullup", "run", "jog", "walk", "gym", "workout", "exercise", "sit-up", "situp", "yoga", "stretch", "cycl", "swim", "plank", "cardio"),
+        "Knowledge" to listOf("study", "read", "learn", "revis", "exam", "course", "homework", "gk", "notes", "lecture"),
+        "Finance" to listOf("budget", "spend", "saving", "invest", "expense"),
+        "Creativity" to listOf("draw", "paint", "sketch", "compose", "music", "design", "write a story", "poem"),
+        "Skills" to listOf("practice", "typing", "coding", "code", "skill", "language"),
+        "Discipline" to listOf("wake", "meditat", "routine", "plan ", "sleep", "water"),
+        "Productivity" to listOf("task", "project", "work", "clean", "organi")
+    )
+
+    fun guessCategory(name: String): String? {
+        val n = name.lowercase()
+        for ((cat, words) in keywords) if (words.any { n.contains(it) }) return cat
+        return null
+    }
+}
+
+data class Estimate(val difficulty: Difficulty, val xp: Int, val capped: Boolean, val note: String)
+
+/** Works out a quest's rank (difficulty) and XP from what the quest asks for. */
+object Estimator {
+    private val opt = setOf(RegexOption.IGNORE_CASE)
+    private val setsRe = Regex("(\\d+)\\s*sets?\\s*(?:of|x)\\s*(\\d+)", opt)
+    private val minRe = Regex("(\\d+(?:\\.\\d+)?)\\s*(hours?|hrs?|h|minutes?|mins?|m)\\b", opt)
+    private val kmRe = Regex("(\\d+(?:\\.\\d+)?)\\s*(km|kms|kilometers?|kilometres?|k)\\b", opt)
+    private val repsRe = Regex("(\\d+)\\s*(?:x\\s*)?(?:push|pull|squat|sit|crunch|burpee|jump|rep|dip|lunge|plank)", opt)
+    private val pagesRe = Regex("(\\d+)\\s*(?:pages?|pgs?)\\b", opt)
+    private val questionsRe = Regex("(\\d+)\\s*(?:questions?|mcqs?|problems?)\\b", opt)
+    private val heavyWords = listOf("exam", "test", "project", "assignment", "interview", "presentation", "priority")
+
+    fun estimate(name: String, desc: String, timerMin: Int, type: QuestType): Estimate {
+        var text = "$name $desc"
+        val parts = ArrayList<String>()
+
+        var reps = 0.0
+        for (m in setsRe.findAll(text)) {
+            reps += (m.groupValues[1].toIntOrNull() ?: 0).coerceAtMost(50) * (m.groupValues[2].toIntOrNull() ?: 0).coerceAtMost(500)
+        }
+        text = setsRe.replace(text, " ")
+        for (m in repsRe.findAll(text)) reps += (m.groupValues[1].toIntOrNull() ?: 0).coerceAtMost(2000)
+
+        var minutes = 0.0
+        for (m in minRe.findAll(text)) {
+            val v = m.groupValues[1].toDoubleOrNull() ?: 0.0
+            minutes += if (m.groupValues[2].lowercase().startsWith("h")) v * 60 else v
+        }
+        if (minutes == 0.0 && timerMin > 0) minutes = timerMin.toDouble()
+
+        var km = 0.0
+        for (m in kmRe.findAll(text)) km += m.groupValues[1].toDoubleOrNull() ?: 0.0
+        var pages = 0.0
+        for (m in pagesRe.findAll(text)) pages += m.groupValues[1].toIntOrNull() ?: 0
+        var questions = 0.0
+        for (m in questionsRe.findAll(text)) questions += m.groupValues[1].toIntOrNull() ?: 0
+
+        if (minutes > 0) parts.add("${minutes.roundToInt()} min")
+        if (reps > 0) parts.add("${reps.roundToInt()} reps")
+        if (km > 0) parts.add("$km km")
+        if (pages > 0) parts.add("${pages.roundToInt()} pages")
+        if (questions > 0) parts.add("${questions.roundToInt()} questions")
+
+        var effort = minutes + reps * 0.4 + km * 7 + pages * 1.5 + questions * 0.5
+        var note: String
+        if (effort <= 0.0) {
+            val lower = text.lowercase()
+            effort = if (heavyWords.any { lower.contains(it) }) 40.0 else 15.0
+            note = "No amount found in the name, so the System assumed a normal task. Add minutes, reps, km or pages for a better estimate."
+        } else {
+            note = "Estimated from: " + parts.joinToString(", ") + "."
+        }
+        var capped = false
+        if (effort > 120.0) {
+            effort = 120.0
+            capped = true
+            note += " Very large amounts are capped. Train smart and rest."
+        }
+        val mult = when (type) {
+            QuestType.MAIN -> 2.5
+            QuestType.WEEKLY -> 2.0
+            QuestType.CHALLENGE -> 1.5
+            else -> 1.0
+        }
+        val e = effort * mult
+        val diff = when {
+            e < 10 -> Difficulty.E
+            e < 25 -> Difficulty.D
+            e < 45 -> Difficulty.C
+            e < 75 -> Difficulty.B
+            e < 120 -> Difficulty.A
+            e < 200 -> Difficulty.S
+            else -> Difficulty.SS
+        }
+        return Estimate(diff, diff.defaultXp, capped, note)
+    }
+}

@@ -96,23 +96,3 @@ class ReminderReceiver : BroadcastReceiver() {
         if (text.isNotEmpty()) Notifier.show(context, id, title, text)
     }
 }
-
-/** Tiny optional sound effects (only played when the sound setting is on). */
-object Sfx {
-    private val handler = Handler(Looper.getMainLooper())
-
-    private fun beep(tone: Int, ms: Int) {
-        try {
-            val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 60)
-            tg.startTone(tone, ms)
-            handler.postDelayed({ tg.release() }, (ms + 150).toLong())
-        } catch (e: Exception) {
-            // ignore
-        }
-    }
-
-    fun questDone() = beep(ToneGenerator.TONE_PROP_ACK, 180)
-    fun levelUp() {
-        beep(ToneGenerator.TONE_PROP_BEEP2, 300)
-    }
-}

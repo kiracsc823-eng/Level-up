@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Switch
@@ -275,6 +275,11 @@ fun SettingsScreen(vm: GameViewModel, d: AppData, nav: Nav) {
             SwitchRow("Sound effects", "Short tones on quest complete and level up", s.sound) { v ->
                 vm.updateSettings { it.copy(sound = v) }
             }
+            SwitchRow("Voice narration", "The System speaks your briefing and results", s.voice) { v ->
+                vm.updateSettings { it.copy(voice = v) }
+            }
+            SysButton("PLAY BRIEFING", { vm.playBriefing() }, Modifier.fillMaxWidth(), filled = false)
+            Spacer(Modifier.height(6.dp))
             SwitchRow("Haptic feedback", "", s.haptics) { v -> vm.updateSettings { it.copy(haptics = v) } }
         }
 

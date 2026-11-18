@@ -88,7 +88,7 @@ object Json {
 
     private fun settingsOut(s: Settings): JSONObject = JSONObject().apply {
         put("theme", s.theme.name); put("mode", s.mode.name); put("accent", s.accent)
-        put("anim", s.anim.name); put("sound", s.sound); put("haptics", s.haptics)
+        put("anim", s.anim.name); put("sound2", s.sound); put("voice", s.voice); put("haptics", s.haptics)
         put("notifications", s.notifications); put("reminderHour", s.reminderHour)
         put("enabledStats", strArr(s.enabledStats.map { it.code }))
         put("xpBase", s.xpBase); put("xpExponent", s.xpExponent)
@@ -218,7 +218,8 @@ object Json {
             mode = en(o.optString("mode"), def.mode),
             accent = o.optLong("accent", 0L),
             anim = en(o.optString("anim"), def.anim),
-            sound = o.optBoolean("sound", def.sound),
+            sound = o.optBoolean("sound2", def.sound),
+            voice = o.optBoolean("voice", def.voice),
             haptics = o.optBoolean("haptics", def.haptics),
             notifications = o.optBoolean("notifications", def.notifications),
             reminderHour = o.optInt("reminderHour", def.reminderHour).coerceIn(0, 23),

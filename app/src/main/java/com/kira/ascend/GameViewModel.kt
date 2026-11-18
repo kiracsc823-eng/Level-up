@@ -4,6 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.kira.ascend.data.Store
 import com.kira.ascend.engine.AchievementEngine
+import com.kira.ascend.engine.Briefing
+import com.kira.ascend.engine.DailyEngine
+import com.kira.ascend.engine.Templates
+import com.kira.ascend.notify.Sfx
+import com.kira.ascend.notify.Voice
 import com.kira.ascend.engine.QuestEngine
 import com.kira.ascend.engine.RankEngine
 import com.kira.ascend.engine.StreakEngine
@@ -83,11 +88,35 @@ class GameViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _notice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> = _notice.asStateFlow()
 
+    private var briefed = false
+
     init {
+        Voice.init(app)
         Notifier.ensureChannel(app)
         refreshDay()
         val s = _data.value.settings
         Notifier.applyDaily(app, s.notifications, s.reminderHour)
+    }
+
+    // ---------------------------------------------------------------- voice / briefing
+
+    /** Plays the spoken briefing once per app launch. */
+    fun autoBriefing() {
+        if (briefed) return
+        briefed = true
+        playBriefing()
+    }
+
+    fun playBriefing() {
+        val d = _data.value
+        if (!d.onboarded) return
+        if (d.settings.sound) Sfx.online()
+        if (d.settings.voice) Voice.speak(Briefing.build(d), true)
+    }
+
+    fun addTemplate(index: Int): String? {
+        val t = Templates.all.getOrNull(index) ?: return null
+        return saveQuest(Templates.build(t, _data.value.settings))
     }
 
     // ---------------------------------------------------------------- core plumbing
@@ -309,10 +338,11 @@ class GameViewModel(private val app: Application) : AndroidViewModel(app) {
         val ol = d.player.level
         val orank = RankEngine.rankFor(ol, d.settings)
         if (added && d.dailyItems.isNotEmpty() && d.dailyItems.all { it.id in checked } && d.dailyCompletedDay != today) {
-            val applied = c.give(250, mapOf(Stat.DIS to 5))
-            c.addHistory(hist(HistoryKind.DAILY_SYSTEM, "Daily System complete", 250, applied))
+            val (rxp, rdis) = DailyEngine.reward(d.dailyItems.size)
+            val applied = c.give(rxp, mapOf(Stat.DIS to rdis))
+            c.addHistory(hist(HistoryKind.DAILY_SYSTEM, "Daily System complete", rxp, applied))
             c.d = c.d.copy(dailyCompletedDay = today, dailySystemsCompleted = c.d.dailySystemsCompleted + 1)
-            c.events.add(GameEvent.DailyComplete(250, applied))
+            c.events.add(GameEvent.DailyComplete(rxp, applied))
         }
         c.finish(ol, orank)
         push(c)
@@ -389,6 +419,8 @@ class GameViewModel(private val app: Application) : AndroidViewModel(app) {
         c.finish(ol, RankEngine.rankFor(ol, d.settings))
         push(c)
         Notifier.cancel(app, Notifier.REQ_TIMER)
+        if (d.settings.sound) Sfx.timerDone()
+        if (d.settings.voice) Voice.speak("Focus session complete. Claim your reward.", false)
     }
 
     fun endTimerEarly() {

@@ -28,6 +28,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kira.ascend.GameViewModel
+import com.kira.ascend.engine.Briefing
+import com.kira.ascend.engine.DailyEngine
 import com.kira.ascend.engine.QuestEngine
 import com.kira.ascend.engine.RankEngine
 import com.kira.ascend.engine.StreakEngine
@@ -38,6 +40,8 @@ import com.kira.ascend.model.StreakType
 import com.kira.ascend.model.Verification
 import com.kira.ascend.model.todayEpoch
 import com.kira.ascend.ui.Avatar
+import com.kira.ascend.ui.LevelRing
+import com.kira.ascend.ui.StatBars
 import com.kira.ascend.ui.CheckBox
 import com.kira.ascend.ui.EmptyState
 import com.kira.ascend.ui.LocalSys
@@ -103,6 +107,13 @@ fun HomeScreen(vm: GameViewModel, d: AppData, nav: Nav) {
                 Box(
                     Modifier
                         .size(48.dp)
+                        .clickable { vm.playBriefing() }
+                        .semantics { contentDescription = "Play briefing" },
+                    contentAlignment = Alignment.Center
+                ) { T("🔊", 22, c.sub) }
+                Box(
+                    Modifier
+                        .size(48.dp)
                         .clickable { nav.push(RSettings) }
                         .semantics { contentDescription = "Settings" },
                     contentAlignment = Alignment.Center
@@ -124,30 +135,21 @@ fun HomeScreen(vm: GameViewModel, d: AppData, nav: Nav) {
                     Column(Modifier.weight(1f)) {
                         T(p.name.uppercase(), 17, c.text, FontWeight.Black, mono = true, maxLines = 1)
                         T("@${p.username}", 12, c.sub, maxLines = 1)
+                        T(Briefing.greeting(), 12, c.accent, FontWeight.Medium)
                     }
                     RankBadge(rank, 48.dp)
                 }
                 Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    T("LEVEL", 12, c.sub, FontWeight.Bold, mono = true, spacing = 3f, modifier = Modifier.padding(bottom = 10.dp))
-                    Spacer(Modifier.width(10.dp))
-                    T("${p.level}", 56, c.text, FontWeight.Black, mono = true)
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    LevelRing(p.level, p.xp.toFloat() / need.toFloat(), rank, 176.dp)
                 }
-                XpBar(p.xp.toFloat() / need.toFloat(), height = 14.dp)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 Row {
                     T("${fmt(p.xp)} / ${fmt(need)} XP", 13, c.text, mono = true, modifier = Modifier.weight(1f))
                     T("Next level: ${fmt(need - p.xp)} XP", 12, c.sub, mono = true)
                 }
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Stat.values().filter { it in s.enabledStats }.take(6).forEach { st ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            T(st.code, 11, c.sub, FontWeight.Bold, mono = true)
-                            T("${p.stats[st] ?: 10}", 18, c.text, FontWeight.Black, mono = true)
-                        }
-                    }
-                }
+                Spacer(Modifier.height(14.dp))
+                StatBars(Stat.values().filter { it in s.enabledStats }.map { Pair(it, p.stats[it] ?: 10) })
             }
 
             // Active focus session
@@ -194,7 +196,7 @@ fun HomeScreen(vm: GameViewModel, d: AppData, nav: Nav) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     T("Progress: $dailyDone / ${d.dailyItems.size}", 12, c.sub, mono = true, modifier = Modifier.weight(1f))
                     if (d.dailyCompletedDay == today) T("COMPLETE", 12, c.good, FontWeight.Black, mono = true)
-                    else T("Reward: +250 XP  +5 DIS", 12, c.accent, mono = true)
+                    else T("Reward: +${DailyEngine.reward(d.dailyItems.size).first} XP  +${DailyEngine.reward(d.dailyItems.size).second} DIS", 12, c.accent, mono = true)
                 }
             }
 

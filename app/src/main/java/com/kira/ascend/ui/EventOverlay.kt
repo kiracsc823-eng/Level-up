@@ -38,7 +38,9 @@ import com.kira.ascend.GameViewModel
 import com.kira.ascend.model.AnimLevel
 import com.kira.ascend.model.GameEvent
 import com.kira.ascend.model.Settings
+import com.kira.ascend.engine.Briefing
 import com.kira.ascend.notify.Sfx
+import com.kira.ascend.notify.Voice
 import kotlinx.coroutines.delay
 
 /** Full-screen cinematic feedback: quest complete, daily complete, achievement, level up. */
@@ -58,9 +60,14 @@ fun EventHost(vm: GameViewModel, settings: Settings) {
         shown = true
         if (settings.haptics) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         if (settings.sound) {
-            if (ev is GameEvent.LevelUp) Sfx.levelUp()
-            if (ev is GameEvent.QuestComplete) Sfx.questDone()
+            when (ev) {
+                is GameEvent.LevelUp -> Sfx.levelUp()
+                is GameEvent.QuestComplete -> Sfx.questDone()
+                is GameEvent.DailyComplete -> Sfx.daily()
+                is GameEvent.Achievement -> Sfx.achievement()
+            }
         }
+        if (settings.voice) Voice.speak(Briefing.forEvent(ev), false)
         if (ev !is GameEvent.LevelUp) {
             delay(2600)
             vm.consumeEvent()

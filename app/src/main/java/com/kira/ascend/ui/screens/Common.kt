@@ -58,7 +58,7 @@ fun statLine(stats: Map<Stat, Int>): String =
 
 fun questMeta(q: Quest, today: Long): String {
     val parts = mutableListOf(q.category, q.type.label)
-    if (q.repeat != Repeat.NONE) parts.add(q.repeat.label)
+    if (q.repeat != Repeat.NONE && q.repeat.label != q.type.label) parts.add(q.repeat.label)
     val dl = q.deadlineDay
     if (dl != null) parts.add("due ${dayText(dl)}")
     if (q.timerMinutes > 0) parts.add("${q.timerMinutes} min")

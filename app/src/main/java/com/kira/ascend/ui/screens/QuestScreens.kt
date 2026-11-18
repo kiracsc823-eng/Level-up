@@ -15,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kira.ascend.GameViewModel
+import com.kira.ascend.engine.Estimator
 import com.kira.ascend.engine.QuestEngine
+import com.kira.ascend.engine.Templates
 import com.kira.ascend.model.AppData
 import com.kira.ascend.model.Difficulty
 import com.kira.ascend.model.Quest
@@ -83,6 +85,14 @@ fun QuestListScreen(vm: GameViewModel, d: AppData, nav: Nav) {
                     else nav.push(RQuest(q.id))
                 }
             )
+        }
+        val have = d.quests.map { it.name.lowercase() }.toSet()
+        val avail = Templates.all.withIndex().filter { it.value.name.lowercase() !in have }
+        if (avail.isNotEmpty()) {
+            SectionTitle("SUGGESTED QUESTS (TAP TO ADD)")
+            Flow {
+                avail.forEach { (i, t) -> Chip("+ ${t.name}", false) { vm.addTemplate(i) } }
+            }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -210,12 +220,38 @@ fun QuestEditScreen(vm: GameViewModel, d: AppData, nav: Nav, id: String?) {
     var notes by remember { mutableStateOf(existing?.notes ?: "") }
     var deadline by remember { mutableStateOf(existing?.deadlineDay) }
     var error by remember { mutableStateOf<String?>(null) }
+    var catTouched by remember { mutableStateOf(existing != null) }
+    var auto by remember { mutableStateOf(existing == null) }
+    var estNote by remember { mutableStateOf("") }
+
+    fun recompute() {
+        if (!auto) return
+        if (!catTouched) {
+            val g = Templates.guessCategory(name)
+            if (g != null && g in d.settings.categories) category = g
+        }
+        val est = Estimator.estimate(name, desc, timerText.toIntOrNull() ?: 0, type)
+        diff = est.difficulty
+        xpText = est.xp.toString()
+        rewards = QuestEngine.rewardsFor(category, est.difficulty, d.settings.enabledStats)
+        estNote = est.note
+    }
 
     val enabled = d.settings.enabledStats.toList().sortedBy { it.ordinal }
 
     Page(if (existing == null) "CREATE QUEST" else "EDIT QUEST", onBack = nav.back) {
-        SysField(name, { name = it }, "Quest name")
-        SysField(desc, { desc = it }, "Description", singleLine = false, minLines = 2)
+        SysField(name, { v ->
+            name = v
+            if (!auto && existing == null && !catTouched) {
+                val g = Templates.guessCategory(v)
+                if (g != null && g in d.settings.categories && g != category) {
+                    category = g
+                    rewards = QuestEngine.rewardsFor(g, diff, d.settings.enabledStats)
+                }
+            }
+            recompute()
+        }, "Quest name")
+        SysField(desc, { v -> desc = v; recompute() }, "Description", singleLine = false, minLines = 2)
 
         SectionTitle("TYPE")
         Flow {
@@ -225,6 +261,7 @@ fun QuestEditScreen(vm: GameViewModel, d: AppData, nav: Nav, id: String?) {
                     if (t == QuestType.DAILY) repeat = Repeat.DAILY
                     if (t == QuestType.WEEKLY) repeat = Repeat.WEEKLY
                     if (t == QuestType.HABIT && repeat == Repeat.NONE) repeat = Repeat.DAILY
+                    recompute()
                 }
             }
         }
@@ -234,12 +271,36 @@ fun QuestEditScreen(vm: GameViewModel, d: AppData, nav: Nav, id: String?) {
             val cats = (d.settings.categories + listOfNotNull(existing?.category)).distinct()
             cats.forEach { cat ->
                 Chip(cat, category == cat) {
+                    catTouched = true
                     category = cat
                     rewards = QuestEngine.rewardsFor(cat, diff, d.settings.enabledStats)
+                    recompute()
                 }
             }
         }
 
+        SectionTitle("RANK, XP AND STAT REWARDS")
+        Flow {
+            Chip("AUTO (System decides)", auto) { auto = true; recompute() }
+            Chip("MANUAL", !auto) { auto = false }
+        }
+        if (auto) {
+            Panel(accent = true) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    com.kira.ascend.ui.RankBadge(com.kira.ascend.model.Rank.valueOf(diff.name), 44.dp)
+                    Spacer(Modifier.width(12.dp))
+                    androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                        T("SYSTEM ESTIMATE", 11, c.sub, FontWeight.Bold, mono = true, spacing = 2f)
+                        T("Rank ${diff.name}  ·  +$xpText XP", 17, c.text, FontWeight.Black, mono = true)
+                        val sl = statLine(rewards)
+                        if (sl.isNotEmpty()) T(sl, 13, c.accent, mono = true)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                T(if (estNote.isEmpty()) "Type the quest name. Include amounts like 60 minutes, 50 push-ups, 3 km or 20 pages." else estNote, 12, c.sub)
+            }
+        }
+        if (!auto) {
         SectionTitle("DIFFICULTY")
         Flow {
             Difficulty.values().forEach { df ->
@@ -269,6 +330,8 @@ fun QuestEditScreen(vm: GameViewModel, d: AppData, nav: Nav, id: String?) {
             }
         }
 
+        }
+
         SectionTitle("REPEAT")
         Flow { Repeat.values().forEach { r -> Chip(r.label, repeat == r) { repeat = r } } }
 
@@ -286,10 +349,10 @@ fun QuestEditScreen(vm: GameViewModel, d: AppData, nav: Nav, id: String?) {
         SectionTitle("TIMER (OPTIONAL)")
         Flow {
             listOf(0 to "None", 25 to "25 min", 45 to "45 min", 60 to "60 min").forEach { (m, l) ->
-                Chip(l, (timerText.toIntOrNull() ?: 0) == m) { timerText = if (m == 0) "" else m.toString() }
+                Chip(l, (timerText.toIntOrNull() ?: 0) == m) { timerText = if (m == 0) "" else m.toString(); recompute() }
             }
         }
-        SysField(timerText, { timerText = it.filter { ch -> ch.isDigit() }.take(3) }, "Custom minutes (max 240)", number = true)
+        SysField(timerText, { v -> timerText = v.filter { ch -> ch.isDigit() }.take(3); recompute() }, "Custom minutes (max 240)", number = true)
 
         SectionTitle("VERIFICATION")
         Flow { Verification.values().forEach { v -> Chip(v.label, ver == v) { ver = v } } }

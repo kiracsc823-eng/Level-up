@@ -38,6 +38,7 @@ import com.kira.ascend.ui.Nav
 import com.kira.ascend.ui.Panel
 import com.kira.ascend.ui.RAchievements
 import com.kira.ascend.ui.RHistory
+import com.kira.ascend.ui.RadarChart
 import com.kira.ascend.ui.RankBadge
 import com.kira.ascend.ui.SectionTitle
 import com.kira.ascend.ui.StatTile
@@ -76,6 +77,12 @@ fun StatsScreen(vm: GameViewModel, d: AppData, nav: Nav) {
 
         if (enabled.isEmpty()) {
             EmptyState("All stats are disabled. Enable some in Settings.")
+        }
+        if (enabled.size >= 3) {
+            SectionTitle("ATTRIBUTE MAP")
+            Panel {
+                RadarChart(enabled.map { it.code }, enabled.map { p.stats[it] ?: 10 })
+            }
         }
 
         val gains7 = Analytics.gainsByStat(d.history, today - 6, today)

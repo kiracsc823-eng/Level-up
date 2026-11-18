@@ -127,7 +127,7 @@ fun SysButton(
     val c = LocalSys.current
     val col = if (danger) c.bad else c.accent
     val shape = RoundedCornerShape(12.dp)
-    val bg = if (!enabled) c.border.copy(alpha = 0.3f) else if (filled) col else Color.Transparent
+    val bg = if (!enabled) c.sub.copy(alpha = 0.18f) else if (filled) col else Color.Transparent
     val fg = if (!enabled) c.sub else if (filled) readableOn(col) else col
     Box(
         modifier = modifier
@@ -182,7 +182,7 @@ fun XpBar(progress: Float, modifier: Modifier = Modifier, height: Dp = 12.dp, co
             .fillMaxWidth()
             .height(height)
             .clip(RoundedCornerShape(50))
-            .background(c.border.copy(alpha = 0.5f))
+            .background(c.text.copy(alpha = 0.10f))
     ) {
         Box(
             Modifier

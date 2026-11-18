@@ -88,6 +88,12 @@ fun AppRoot(vm: GameViewModel) {
                 else -> MainShell(vm, data)
             }
             if (splashDone && data.onboarded) EventHost(vm, data.settings)
+            LaunchedEffect(splashDone, data.onboarded) {
+                if (splashDone && data.onboarded) {
+                    delay(500)
+                    vm.autoBriefing()
+                }
+            }
 
             val n = notice
             if (n != null) {
@@ -180,6 +186,13 @@ fun MainShell(vm: GameViewModel, d: AppData) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
                     ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(0.45f)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(if (sel) c.accent else c.accent.copy(alpha = 0f))
+                        )
                         T(t.glyph, 20, if (sel) c.accent else c.sub, FontWeight.Bold)
                         T(t.label, 10, if (sel) c.accent else c.sub, if (sel) FontWeight.Bold else FontWeight.Normal, mono = true, spacing = 1f)
                     }
